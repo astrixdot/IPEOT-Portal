@@ -1,0 +1,30 @@
+# Production overrides — no host-published service ports except HAProxy.
+
+name: ipeot
+
+services:
+  ipeot-authservice:
+    ports: !reset []
+    environment:
+      NODE_ENV: production
+      CORS_RELAXED: "false"
+
+  ipeot-crudservice:
+    ports: !reset []
+    environment:
+      NODE_ENV: production
+      CORS_RELAXED: "false"
+
+  ipeot-uploadservice:
+    ports: !reset []
+    environment:
+      NODE_ENV: production
+      CORS_RELAXED: "false"
+
+  ipeot-notifications:
+    ports: !reset []
+
+  ipeot-integration:
+    ports: !reset []
+    environment:
+      NODE_ENV: production

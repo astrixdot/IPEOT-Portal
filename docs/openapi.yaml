@@ -1,0 +1,149 @@
+openapi: 3.0.3
+info:
+  title: IPEOT Portal API
+  version: 0.1.0
+  description: Session cookie IPEOT_SESSION. Auth routes are under /api/auth. Business routes are under /api/crud/v1.
+servers:
+  - url: http://localhost:8280
+paths:
+  /api/auth/config:
+    get:
+      summary: Sign-in options
+      responses:
+        "200":
+          description: LDAP flag and a development hint when local passwords are enabled
+  /api/auth/login:
+    post:
+      summary: Create a session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cpf, password]
+              properties:
+                cpf: { type: string }
+                password: { type: string }
+      responses:
+        "200": { description: Session user }
+        "401": { description: invalid_credentials }
+        "403": { description: user_not_provisioned }
+        "503": { description: ldap_unavailable }
+  /api/auth/logout:
+    post:
+      summary: End the session
+      responses:
+        "200": { description: Signed out }
+  /api/auth/me:
+    get:
+      summary: Current principal, including delegated roles
+      responses:
+        "200": { description: Session user }
+        "401": { description: unauthenticated }
+  /api/crud/v1/dashboard:
+    get:
+      summary: Home counts
+      responses:
+        "200": { description: Counts }
+  /api/crud/v1/projects:
+    get:
+      summary: Project list
+      responses:
+        "200": { description: Projects }
+  /api/crud/v1/projects/{id}:
+    get:
+      summary: Project workspace summary
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: Project and team }
+  /api/crud/v1/tasks/mine:
+    get:
+      summary: Pending tasks assigned to the caller
+      responses:
+        "200": { description: Tasks }
+  /api/crud/v1/awp/cycles:
+    get:
+      summary: Annual work programme cycles
+      responses:
+        "200": { description: Cycles }
+  /api/crud/v1/admin/departments:
+    get:
+      summary: Departments
+      responses:
+        "200": { description: Departments }
+    post:
+      summary: Add a department
+      responses:
+        "201": { description: Created }
+  /api/crud/v1/admin/departments/{id}:
+    patch:
+      summary: Rename or activate a department
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: Updated }
+  /api/crud/v1/admin/work-centres:
+    get:
+      summary: Work centres
+      responses:
+        "200": { description: Work centres }
+    post:
+      summary: Add a work centre
+      responses:
+        "201": { description: Created }
+  /api/crud/v1/admin/project-types:
+    get:
+      summary: Study types
+      responses:
+        "200": { description: Study types }
+    post:
+      summary: Add a study type
+      responses:
+        "201": { description: Created }
+  /api/crud/v1/admin/users:
+    get:
+      summary: Users and active role assignments
+      responses:
+        "200": { description: Users }
+  /api/crud/v1/admin/users/{id}/assignments:
+    post:
+      summary: Assign a role
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "201": { description: Assignment }
+  /api/crud/v1/admin/users/{id}/assignments/{assignmentId}:
+    delete:
+      summary: Revoke a role assignment
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: assignmentId
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: Revoked }
+  /api/crud/v1/admin/matrix:
+    get:
+      summary: Approval matrix
+      responses:
+        "200": { description: Stages }
+  /api/crud/v1/admin/audit:
+    get:
+      summary: Append-only audit log
+      responses:
+        "200": { description: Audit rows }

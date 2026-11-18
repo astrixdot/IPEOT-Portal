@@ -1,0 +1,216 @@
+# IPEOT Portal — separate stack from ADB (docker-compose.yml at repo root).
+#
+# Postgres: shared digi_postgres_db — database ipeot (see migrations/README.md).
+# Default env: host.docker.internal:5490 (+ extra_hosts below). Alt: digi_postgres_db:5432 on digi_net.
+#
+# Host ports (avoid conflicts with ADB 8080/9443 and digi 8001–8008):
+#   HAProxy  8280 → HTTP, 9643 → HTTPS (when ipeot.pem is configured)
+#   Direct debug (optional): 9991 auth, 3034 crud, 5051 upload, 8011 notifications, 3035 integration
+#
+# Usage:
+#   cp env/ipeot.env.example env/ipeot.env
+#   docker compose -f "IPEOT Portal/docker-compose.yml" up -d --build
+
+name: ipeot
+
+networks:
+  ipeot_net:
+    name: ipeot_net
+  digi_net:
+    external: true
+    name: microservices_digi_network
+
+services:
+  ipeot-web:
+    build:
+      context: ./ipeot-web
+      dockerfile: Dockerfile
+    container_name: ipeot-web
+    restart: unless-stopped
+    networks:
+      - ipeot_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  ipeot-authservice:
+    build:
+      context: ./ipeot-authservice
+      dockerfile: Dockerfile
+    container_name: ipeot-authservice
+    restart: unless-stopped
+    env_file:
+      - ./env/ipeot.env
+    environment:
+      PORT: "9991"
+    ports:
+      - "${IPEOT_AUTH_HOST_PORT:-9991}:9991"
+    networks:
+      - ipeot_net
+      - digi_net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:9991/ping').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  ipeot-crudservice:
+    build:
+      context: ./ipeot-crudservice
+      dockerfile: Dockerfile
+    container_name: ipeot-crudservice
+    restart: unless-stopped
+    env_file:
+      - ./env/ipeot.env
+    environment:
+      PORT: "3034"
+      DEV_PORT: "3034"
+    ports:
+      - "${IPEOT_CRUD_HOST_PORT:-3034}:3034"
+    networks:
+      - ipeot_net
+      - digi_net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:3034/ping').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+
+  ipeot-uploadservice:
+    build:
+      context: ./ipeot-uploadservice
+      dockerfile: Dockerfile
+    container_name: ipeot-uploadservice
+    restart: unless-stopped
+    env_file:
+      - ./env/ipeot.env
+    environment:
+      PORT: "5051"
+    ports:
+      - "${IPEOT_UPLOAD_HOST_PORT:-5051}:5051"
+    volumes:
+      - ipeot_uploads:/app/uploads
+    networks:
+      - ipeot_net
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:5051/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  ipeot-notifications:
+    build:
+      context: ./ipeot-notifications
+      dockerfile: Dockerfile
+    container_name: ipeot-notifications
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Kolkata
+    ports:
+      - "${IPEOT_NOTIF_HOST_PORT:-8011}:8011"
+    networks:
+      - ipeot_net
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8011/health')\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 40s
+
+  ipeot-integration:
+    build:
+      context: ./ipeot-integration
+      dockerfile: Dockerfile
+    container_name: ipeot-integration
+    restart: unless-stopped
+    env_file:
+      - ./env/ipeot.env
+    environment:
+      PORT: "3035"
+    ports:
+      - "${IPEOT_INTEGRATION_HOST_PORT:-3035}:3035"
+    networks:
+      - ipeot_net
+      - digi_net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:3035/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  ipeot-redis:
+    profiles: ["queue"]
+    image: redis:7-alpine
+    container_name: ipeot-redis
+    restart: unless-stopped
+    ports:
+      - "${IPEOT_REDIS_HOST_PORT:-6380}:6379"
+    networks:
+      - ipeot_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  ipeot-haproxy:
+    image: haproxy:lts
+    container_name: ipeot-haproxy
+    restart: unless-stopped
+    ports:
+      - "${IPEOT_HAPROXY_HTTP_PORT:-8280}:80"
+      - "${IPEOT_HAPROXY_HTTPS_PORT:-9643}:443"
+    environment:
+      TZ: Asia/Kolkata
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./haproxy/certs:/certs:ro
+    networks:
+      - ipeot_net
+    depends_on:
+      ipeot-web:
+        condition: service_healthy
+      ipeot-authservice:
+        condition: service_healthy
+      ipeot-crudservice:
+        condition: service_healthy
+      ipeot-uploadservice:
+        condition: service_healthy
+      ipeot-notifications:
+        condition: service_healthy
+
+volumes:
+  ipeot_uploads:
